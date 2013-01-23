@@ -22,6 +22,8 @@ import java.net.URLConnection;
 import java.util.List;
 import java.util.Set;
 
+import android.content.res.AssetManager;
+import android.util.Log;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.android.ASaxEventRecorder;
 import ch.qos.logback.classic.android.BasicLogcatConfigurator;
@@ -34,6 +36,8 @@ import ch.qos.logback.core.status.StatusManager;
 import ch.qos.logback.core.status.WarnStatus;
 import ch.qos.logback.core.util.Loader;
 import ch.qos.logback.core.util.OptionHelper;
+import android.content.Context;
+import org.slf4j.Logger;
 
 // contributors
 // Ted Graham, Matt Fowles, see also http://jira.qos.ch/browse/LBCORE-32
@@ -63,225 +67,55 @@ public class ContextInitializer {
     this.loggerContext = loggerContext;
   }
   
-  private InputStream openManifest(ClassLoader classLoader, boolean updateStatus) {
-    StatusManager sm = loggerContext.getStatusManager();
 
-    // fetch the URL to AndroidManifest.xml
-    URL url = getResource(MANIFEST_FILE, classLoader, updateStatus);
-    if (url == null) {
-      return null;
-    }
-    // open the file (via URL connection's input stream)
-    InputStream stream = null;
-    try {
-      URLConnection conn = url.openConnection();
 
-      // per http://jira.qos.ch/browse/LBCORE-105
-      // per http://jira.qos.ch/browse/LBCORE-127
-      conn.setUseCaches(false);
+//  public void configureByResource(URL url) throws JoranException {
+//    if (url == null) {
+//      throw new IllegalArgumentException("URL argument cannot be null");
+//    }
+//    if (url.toString().endsWith("groovy")) {
+//      StatusManager sm = loggerContext.getStatusManager();
+//      sm.add(new ErrorStatus("Groovy classes are not available on the class path. ABORTING INITIALIZATION.",
+//              loggerContext));
+//    }
+//    if (url.toString().endsWith("xml")) {
+//    	joranConfigureByResource(url);
+//    }
+//  }
+//
+//  void joranConfigureByResource(URL url) throws JoranException {
+//    JoranConfigurator configurator = new JoranConfigurator();
+//    configurator.setContext(loggerContext);
+//    configurator.doConfigure(url);
+//  }
 
-      stream = conn.getInputStream();
-    } catch (IOException e) {
-      sm.add(new ErrorStatus("Could not open URL [" + url + "].", e));
-    }
-    return stream;
-  }
-  
-  /**
-   * Configures Logback by reading the configuration from the
-   * AndroidManifest.xml
-   * 
-   * @return {@code true} if successfully processed config from manifest;
-   *         {@code false} otherwise
-   */
-  public boolean configureByManifest() {
 
-    ClassLoader classLoader = Loader.getClassLoaderOfObject(this);
-    InputStream stream = openManifest(classLoader, true);
-    if (stream == null) {
-      // error already reported in openManifest(), so no need to repeat
-      return false;
-    }
-
-    // use Android XML resource parser to process AndroidManifest.xml
-    // (which is in compressed binary form; not text)
-    ASaxEventRecorder recorder = new ASaxEventRecorder(loggerContext);
-    recorder.setFilter(TAG_MANIFEST, TAG_LOGBACK);
-
-    boolean ok = false;
-    try {
-      // begin parsing...
-      recorder.recordEvents(stream);
-
-      try {
-        stream.close();
-      } catch (IOException e) {
-      }
-
-      // ...and get the results to pass to Joran
-      List<SaxEvent> events = recorder.getSaxEventList();
-      if ((events != null) && (events.size() > 0)) {
-        JoranConfigurator joran = new JoranConfigurator();
-        joran.setContext(loggerContext);
-        joran.doConfigure(events);
-        ok = true;
-      }
-    } catch (JoranException e) {
-      StatusManager sm = loggerContext.getStatusManager();
-      sm.add(new ErrorStatus("Could not configure by AndroidManifest.xml", e));
-    }
-    return ok;
-  }
-  
-  public void configureByResource(URL url) throws JoranException {
-    if (url == null) {
-      throw new IllegalArgumentException("URL argument cannot be null");
-    }
-    if (url.toString().endsWith("groovy")) {
-      StatusManager sm = loggerContext.getStatusManager();
-      sm.add(new ErrorStatus("Groovy classes are not available on the class path. ABORTING INITIALIZATION.",
-              loggerContext));
-    }
-    if (url.toString().endsWith("xml")) {
-    	joranConfigureByResource(url);
-    }
-  }
-
-  void joranConfigureByResource(URL url) throws JoranException {
-    JoranConfigurator configurator = new JoranConfigurator();
-    configurator.setContext(loggerContext);
-    configurator.doConfigure(url);
-  }
-
-  private URL findConfigFileURLFromSystemProperties(ClassLoader classLoader, boolean updateStatus) {
-    String logbackConfigFile = OptionHelper.getSystemProperty(CONFIG_FILE_PROPERTY);
-    if (logbackConfigFile != null) {
-      URL result = null;
-      try {
-        result = new URL(logbackConfigFile);
-        return result;
-      } catch (MalformedURLException e) {
-        // so, resource is not a URL:
-        // attempt to get the resource from the class path
-        result = Loader.getResource(logbackConfigFile, classLoader);
-        if (result != null) {
-          return result;
-        }
-        File f = new File(logbackConfigFile);
-        if (f.exists() && f.isFile()) {
-          try {
-            result = f.toURI().toURL();
-            return result;
-          } catch (MalformedURLException e1) {
-          }
-        }
-      } finally {
-        if (updateStatus) {
-          statusOnResourceSearch(logbackConfigFile, classLoader, result);
-        }
-      }
-    }
-    return null;
-  }
-
-  public URL findURLOfDefaultConfigurationFile(boolean updateStatus, String dir) {
-    ClassLoader myClassLoader = Loader.getClassLoaderOfObject(this);
-    URL url = findConfigFileURLFromSystemProperties(myClassLoader, updateStatus);
-    if (url != null) {
-      return url;
-    }
-
-    url = getResource(dir + TEST_AUTOCONFIG_FILE, myClassLoader, updateStatus);
-    if (url != null) {
-      return url;
-    }
-
-    return getResource(dir + AUTOCONFIG_FILE, myClassLoader, updateStatus);
-  }
-  
-  private URL getResource(String filename, ClassLoader myClassLoader, boolean updateStatus) {
-    URL url = Loader.getResource(filename, myClassLoader);
-    if (updateStatus) {
-      statusOnResourceSearch(filename, myClassLoader, url);
-    }
-    return url;
-  }
-
-  private File findSDConfigFile(boolean updateStatus) {
-    
-    File file = new File(SDCARD_DIR + TEST_AUTOCONFIG_FILE);
-    if (!file.exists()) {
-      file = new File(SDCARD_DIR + AUTOCONFIG_FILE);
-    }
-    
-    if (updateStatus) {
-      StatusManager sm = loggerContext.getStatusManager();
-      if (file.exists()) {
-        sm.add(new InfoStatus("Found config in SD card: ["+ file.getAbsolutePath() +"]", loggerContext));
-      } else {
-        sm.add(new WarnStatus("No config in SD card", loggerContext));
-      }
-    }
-    
-    return file.exists() ? file : null;
-  }
-  
   public void autoConfig() throws JoranException {
     StatusListenerConfigHelper.installIfAsked(loggerContext);
     
-    /* Search for configuration from:
-     *   1. SD card
-     *   2. Android Manifest
-     *   3. assets directory
-     *   
-     * If not found, fall back to simple LogcatAppender.
-     */
-    File file = findSDConfigFile(true);
-    if (file != null) {
-      JoranConfigurator configurator = new JoranConfigurator();
-      configurator.setContext(loggerContext);
-      configurator.doConfigure(file);
-      
-    } else if (!configureByManifest()) {
-    	
-      URL url = findURLOfDefaultConfigurationFile(true, ASSETS_DIR);
-      if (url != null) {
-        configureByResource(url);
-        
-      } else {	
-      	BasicLogcatConfigurator.configure(loggerContext);
-      }
-    }
+    BasicLogcatConfigurator.configure(loggerContext);
   }
 
-  private void multiplicityWarning(String resourceName, ClassLoader classLoader) {
-    Set<URL> urlSet = null;
-    StatusManager sm = loggerContext.getStatusManager();
+  public void config(Context context) {
+    AssetManager am = context.getResources().getAssets();
+    InputStream is;
     try {
-      urlSet = Loader.getResourceOccurenceCount(resourceName, classLoader);
+      is = am.open(AUTOCONFIG_FILE);
     } catch (IOException e) {
-      sm.add(new ErrorStatus("Failed to get url list for resource [" + resourceName + "]",
-              loggerContext, e));
+      loggerContext.getLogger(Logger.ROOT_LOGGER_NAME).info("Logback configuration file {} not found in assets direcotry", AUTOCONFIG_FILE);
+      return;
     }
-    if (urlSet != null && urlSet.size() > 1) {
-      sm.add(new WarnStatus("Resource [" + resourceName + "] occurs multiple times on the classpath.",
-              loggerContext));
-      for (URL url : urlSet) {
-        sm.add(new WarnStatus("Resource [" + resourceName + "] occurs at [" + url.toString() + "]",
-                loggerContext));
-      }
+
+    JoranConfigurator configurator = new JoranConfigurator();
+    configurator.setContext(loggerContext);
+    try {
+      configurator.doConfigure(is);
+    } catch (JoranException e) {
+      loggerContext.getLogger(Logger.ROOT_LOGGER_NAME).error(String.format("Error in Logback configuration file assets/%s.", AUTOCONFIG_FILE), e);
+      return;
     }
+
+
   }
 
-  private void statusOnResourceSearch(String resourceName, ClassLoader classLoader, URL url) {
-    StatusManager sm = loggerContext.getStatusManager();
-    if (url == null) {
-      sm.add(new InfoStatus("Could NOT find resource [" + resourceName + "]",
-              loggerContext));
-    } else {
-      sm.add(new InfoStatus("Found resource [" + resourceName + "] at [" + url.toString() + "]",
-              loggerContext));
-      multiplicityWarning(resourceName, classLoader);
-    }
-  }
 }

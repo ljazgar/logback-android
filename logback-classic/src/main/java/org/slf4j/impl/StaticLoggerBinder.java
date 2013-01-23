@@ -24,6 +24,7 @@ import ch.qos.logback.classic.util.ContextSelectorStaticBinder;
 import ch.qos.logback.core.CoreConstants;
 import ch.qos.logback.core.joran.spi.JoranException;
 import ch.qos.logback.core.util.StatusPrinter;
+import android.content.Context;
 
 /**
  * 
@@ -93,6 +94,10 @@ public class StaticLoggerBinder implements LoggerFactoryBinder {
       Util.report("Failed to instantiate [" + LoggerContext.class.getName()
           + "]", t);
     }
+  }
+
+  public void config(Context context) {
+    new ContextInitializer(defaultLoggerContext).config(context);
   }
 
   public ILoggerFactory getLoggerFactory() {
