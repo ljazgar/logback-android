@@ -93,7 +93,7 @@ public class ContextInitializer {
   public void autoConfig() throws JoranException {
     StatusListenerConfigHelper.installIfAsked(loggerContext);
     
-    BasicLogcatConfigurator.configure(loggerContext);
+    //BasicLogcatConfigurator.configure(loggerContext);
   }
 
   public void config(Context context) {
